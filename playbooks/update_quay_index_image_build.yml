@@ -33,6 +33,13 @@
         - not target_stat.stat.exists
         - not ignore_if_missing
 
+    - name: Show current QUAY_INDEX_IMAGE_BUILD line(s) before change
+      ansible.builtin.command: awk '/^[[:space:]]*QUAY_INDEX_IMAGE_BUILD[[:space:]]*:/ {print NR":"$0}' {{ target_file }}
+      register: before_lines
+      changed_when: false
+      failed_when: false
+      when: target_stat.stat.exists
+
     - name: Update only the numeric tag part of QUAY_INDEX_IMAGE_BUILD while preserving the line
       ansible.builtin.lineinfile:
         path: "{{ target_file }}"
@@ -43,10 +50,19 @@
       register: replace_result
       when: target_stat.stat.exists
 
+    - name: Show QUAY_INDEX_IMAGE_BUILD line(s) after change
+      ansible.builtin.command: awk '/^[[:space:]]*QUAY_INDEX_IMAGE_BUILD[[:space:]]*:/ {print NR":"$0}' {{ target_file }}
+      register: after_lines
+      changed_when: false
+      failed_when: false
+      when: target_stat.stat.exists
+
     - name: Optionally fail if key not found or pattern did not match
       ansible.builtin.fail:
         msg: |
           Could not find a line matching 'QUAY_INDEX_IMAGE_BUILD: <image>:<digits>' in {{ target_file }} on host {{ inventory_hostname }}; no changes made.
+          Before lines: {{ before_lines.stdout_lines | default([]) }}
+          After lines: {{ after_lines.stdout_lines | default([]) }}
       when:
         - target_stat.stat.exists
         - (replace_result is not defined) or (not replace_result.changed)
