@@ -3,12 +3,15 @@
   hosts: all
   gather_facts: false
   vars:
-    # Path to the YAML file to edit
+    # Path to the YAML file to edit on this host
     target_file: ''
+
     # New value to set for QUAY_INDEX_IMAGE_BUILD (number or string)
     quay_index_image_build: ''
-    # If true and the key is not found, do not fail (no change will be made)
+
+    # If true and the key is not found or file is missing, do not fail
     ignore_if_missing: false
+
   tasks:
     - name: Validate required variables are provided
       ansible.builtin.assert:
@@ -16,6 +19,18 @@
           - target_file | length > 0
           - quay_index_image_build | string | length > 0
         fail_msg: "You must provide 'target_file' and 'quay_index_image_build'"
+
+    - name: Check file exists
+      ansible.builtin.stat:
+        path: "{{ target_file }}"
+      register: target_stat
+
+    - name: Fail when file is missing (unless ignore_if_missing)
+      ansible.builtin.fail:
+        msg: "Target file {{ target_file }} does not exist on host {{ inventory_hostname }}"
+      when:
+        - not target_stat.stat.exists
+        - not ignore_if_missing
 
     # Case 1: Replace when present as an env array item:
     # - name: QUAY_INDEX_IMAGE_BUILD
@@ -25,9 +40,10 @@
         path: "{{ target_file }}"
         # Multiline regex: match '- name: QUAY_INDEX_IMAGE_BUILD' followed by the 'value:' line
         regexp: '(?m)(^\s*-\s*name:\s*QUAY_INDEX_IMAGE_BUILD\s*$\n\s*)(value:\s*).*$'
-        replace: '\\1\\2"{{ quay_index_image_build }}"'
+        replace: '\\1\\2{{ quay_index_image_build | to_json }}'
         backup: true
       register: replace_env
+      when: target_stat.stat.exists
 
     # Case 2: Replace when present as a single YAML key:
     # QUAY_INDEX_IMAGE_BUILD: 123  or  QUAY_INDEX_IMAGE_BUILD: "123"
@@ -35,15 +51,36 @@
       ansible.builtin.replace:
         path: "{{ target_file }}"
         regexp: '^(?m)([[:space:]]*QUAY_INDEX_IMAGE_BUILD[[:space:]]*:[[:space:]]*).*$'
-        replace: '\\1{{ quay_index_image_build }}'
+        replace: '\\1{{ quay_index_image_build | to_json }}'
         backup: true
       register: replace_key
-      when: not replace_env.changed
+      when:
+        - target_stat.stat.exists
+        - not replace_env.changed
+
+    - name: Collect nearby YAML files for troubleshooting
+      ansible.builtin.find:
+        path: "{{ target_file | dirname }}"
+        recurse: false
+        file_type: file
+        patterns:
+          - "*.yaml"
+          - "*.yml"
+      register: nearby_files
+      when:
+        - target_stat.stat.exists
+        - not replace_env.changed
+        - (replace_key is not defined) or (not replace_key.changed)
+        - not ignore_if_missing
 
     - name: Optionally fail if key not found
       ansible.builtin.fail:
-        msg: "Key 'QUAY_INDEX_IMAGE_BUILD' was not found in {{ target_file }}; no changes made"
+        msg: |
+          Key 'QUAY_INDEX_IMAGE_BUILD' was not found in {{ target_file }} on host {{ inventory_hostname }}; no changes made.
+          Nearby YAML files in {{ target_file | dirname }}:
+          {{ (nearby_files.files | map(attribute='path') | list | join('\n')) if (nearby_files is defined) else 'N/A' }}
       when:
+        - target_stat.stat.exists
         - not replace_env.changed
         - (replace_key is not defined) or (not replace_key.changed)
         - not ignore_if_missing
