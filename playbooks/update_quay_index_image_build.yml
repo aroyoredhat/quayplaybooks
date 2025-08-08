@@ -43,10 +43,9 @@
     - name: Update all occurrences of trailing numeric tag while preserving the rest of the line
       ansible.builtin.replace:
         path: "{{ target_file }}"
-        # Replace lines like: QUAY_INDEX_IMAGE_BUILD: <repo path possibly quoted>:<digits>...
-        # Groups: 1) prefix up to the colon before digits, 2) the colon, 3) digits
-        regexp: "(?m)^(\\s*QUAY_INDEX_IMAGE_BUILD\\s*:\\s*[\"']?[^\"'#\\n]*?)(:)(\\d+)"
-        replace: "\\1\\2{{ new_tag_number | string }}"
+        # Match up to the LAST colon before trailing digits; keep quotes/comments
+        regexp: "(?m)^(\\s*QUAY_INDEX_IMAGE_BUILD\\s*:\\s*[\"']?.*):([0-9]+)([\"']?\\s*(?:#.*)?\\s*)$"
+        replace: "\\1:{{ new_tag_number | string }}\\3"
         backup: true
       register: replace_result
       when: target_stat.stat.exists
