@@ -1,6 +1,6 @@
 ---
 - name: Update QUAY_INDEX_IMAGE_BUILD in a YAML file
-  hosts: localhost
+  hosts: all
   gather_facts: false
   vars:
     # Path to the YAML file to edit
@@ -17,18 +17,33 @@
           - quay_index_image_build | string | length > 0
         fail_msg: "You must provide 'target_file' and 'quay_index_image_build'"
 
-    - name: Replace QUAY_INDEX_IMAGE_BUILD value in file
+    # Case 1: Replace when present as an env array item:
+    # - name: QUAY_INDEX_IMAGE_BUILD
+    #   value: "123"
+    - name: Update env list entry value
       ansible.builtin.replace:
         path: "{{ target_file }}"
-        # Matches lines like:   QUAY_INDEX_IMAGE_BUILD: 123   or   QUAY_INDEX_IMAGE_BUILD: "123"
-        regexp: '^([[:space:]]*QUAY_INDEX_IMAGE_BUILD[[:space:]]*:[[:space:]]*).*$'
+        # Multiline regex: match '- name: QUAY_INDEX_IMAGE_BUILD' followed by the 'value:' line
+        regexp: '(?m)(^\s*-\s*name:\s*QUAY_INDEX_IMAGE_BUILD\s*$\n\s*)(value:\s*).*$'
+        replace: '\\1\\2"{{ quay_index_image_build }}"'
+        backup: true
+      register: replace_env
+
+    # Case 2: Replace when present as a single YAML key:
+    # QUAY_INDEX_IMAGE_BUILD: 123  or  QUAY_INDEX_IMAGE_BUILD: "123"
+    - name: Update top-level key value
+      ansible.builtin.replace:
+        path: "{{ target_file }}"
+        regexp: '^(?m)([[:space:]]*QUAY_INDEX_IMAGE_BUILD[[:space:]]*:[[:space:]]*).*$'
         replace: '\\1{{ quay_index_image_build }}'
         backup: true
-      register: replace_result
+      register: replace_key
+      when: not replace_env.changed
 
     - name: Optionally fail if key not found
       ansible.builtin.fail:
         msg: "Key 'QUAY_INDEX_IMAGE_BUILD' was not found in {{ target_file }}; no changes made"
       when:
-        - not replace_result.changed
+        - not replace_env.changed
+        - (replace_key is not defined) or (not replace_key.changed)
         - not ignore_if_missing
