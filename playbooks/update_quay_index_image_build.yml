@@ -33,12 +33,12 @@
         - not target_stat.stat.exists
         - not ignore_if_missing
 
-    - name: Update only the numeric tag part of QUAY_INDEX_IMAGE_BUILD (handles optional quotes)
-      ansible.builtin.replace:
+    - name: Update only the numeric tag part of QUAY_INDEX_IMAGE_BUILD while preserving the line
+      ansible.builtin.lineinfile:
         path: "{{ target_file }}"
-        # Matches: QUAY_INDEX_IMAGE_BUILD: [optional quote]<anything>:<digits><anything trailing>
-        regexp: "(?m)^(\\s*QUAY_INDEX_IMAGE_BUILD\\s*:\\s*[\"']?.*?:)(\\d+)(.*)$"
-        replace: '\\1{{ new_tag_number | string }}\\3'
+        regexp: "^(\\s*QUAY_INDEX_IMAGE_BUILD\\s*:\\s*[\"']?.*?:)\\d+(.*)$"
+        line: "\\1{{ new_tag_number | string }}\\2"
+        backrefs: true
         backup: true
       register: replace_result
       when: target_stat.stat.exists
