@@ -36,8 +36,8 @@
     - name: Update only the numeric tag part of QUAY_INDEX_IMAGE_BUILD (handles optional quotes)
       ansible.builtin.replace:
         path: "{{ target_file }}"
-        # Matches: QUAY_INDEX_IMAGE_BUILD: [optional quote]<anything>:<digits>[optional same/any quote]
-        regexp: "^(\\s*QUAY_INDEX_IMAGE_BUILD\\s*:\\s*[\"']?.*?:)(\\d+)([\"']?\\s*)$"
+        # Matches: QUAY_INDEX_IMAGE_BUILD: [optional quote]<anything>:<digits><anything trailing>
+        regexp: "(?m)^(\\s*QUAY_INDEX_IMAGE_BUILD\\s*:\\s*[\"']?.*?:)(\\d+)(.*)$"
         replace: '\\1{{ new_tag_number | string }}\\3'
         backup: true
       register: replace_result
