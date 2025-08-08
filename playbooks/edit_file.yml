@@ -1,0 +1,19 @@
+---
+- name: Sample file edit playbook
+  hosts: localhost
+  gather_facts: false
+  vars:
+    target_file: /tmp/example.txt
+    find_pattern: 'old'
+    replace_with: 'new'
+  tasks:
+    - name: Ensure target file exists
+      ansible.builtin.file:
+        path: "{{ target_file }}"
+        state: touch
+
+    - name: Replace string in file
+      ansible.builtin.replace:
+        path: "{{ target_file }}"
+        regexp: "{{ find_pattern }}"
+        replace: "{{ replace_with }}"
