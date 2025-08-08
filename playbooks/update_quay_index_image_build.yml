@@ -1,0 +1,34 @@
+---
+- name: Update QUAY_INDEX_IMAGE_BUILD in a YAML file
+  hosts: localhost
+  gather_facts: false
+  vars:
+    # Path to the YAML file to edit
+    target_file: ''
+    # New value to set for QUAY_INDEX_IMAGE_BUILD (number or string)
+    quay_index_image_build: ''
+    # If true and the key is not found, do not fail (no change will be made)
+    ignore_if_missing: false
+  tasks:
+    - name: Validate required variables are provided
+      ansible.builtin.assert:
+        that:
+          - target_file | length > 0
+          - quay_index_image_build | string | length > 0
+        fail_msg: "You must provide 'target_file' and 'quay_index_image_build'"
+
+    - name: Replace QUAY_INDEX_IMAGE_BUILD value in file
+      ansible.builtin.replace:
+        path: "{{ target_file }}"
+        # Matches lines like:   QUAY_INDEX_IMAGE_BUILD: 123   or   QUAY_INDEX_IMAGE_BUILD: "123"
+        regexp: '^([[:space:]]*QUAY_INDEX_IMAGE_BUILD[[:space:]]*:[[:space:]]*).*$'
+        replace: '\\1{{ quay_index_image_build }}'
+        backup: true
+      register: replace_result
+
+    - name: Optionally fail if key not found
+      ansible.builtin.fail:
+        msg: "Key 'QUAY_INDEX_IMAGE_BUILD' was not found in {{ target_file }}; no changes made"
+      when:
+        - not replace_result.changed
+        - not ignore_if_missing
