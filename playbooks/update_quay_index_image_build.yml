@@ -3,66 +3,41 @@
   hosts: all
   gather_facts: false
   vars:
-    # Path to the YAML file to edit on this host
     target_file: ''
-
-    # New numeric tag to set at the end of the image reference, e.g., 99716
     new_tag_number: ''
-
-    # If true and the key is not found or file is missing, do not fail
     ignore_if_missing: false
-
   tasks:
-    - name: Validate required variables are provided
+    - name: Validate variables
       ansible.builtin.assert:
         that:
           - target_file | length > 0
-          - new_tag_number | string | length > 0
           - new_tag_number | string is match('^\\d+$')
-        fail_msg: "You must provide 'target_file' and a numeric 'new_tag_number' (e.g., 99716)"
+        fail_msg: "Provide 'target_file' and numeric 'new_tag_number'"
 
-    - name: Check file exists
+    - name: Ensure file exists
       ansible.builtin.stat:
         path: "{{ target_file }}"
       register: target_stat
 
-    - name: Fail when file is missing (unless ignore_if_missing)
+    - name: Stop if file is missing (unless ignore_if_missing)
       ansible.builtin.fail:
-        msg: "Target file {{ target_file }} does not exist on host {{ inventory_hostname }}"
+        msg: "Target file {{ target_file }} does not exist on {{ inventory_hostname }}"
       when:
         - not target_stat.stat.exists
         - not ignore_if_missing
 
-    - name: Show current QUAY_INDEX_IMAGE_BUILD line(s) before change
-      ansible.builtin.command: awk '/^[[:space:]]*QUAY_INDEX_IMAGE_BUILD[[:space:]]*:/ {print NR":"$0}' {{ target_file }}
-      register: before_lines
-      changed_when: false
-      failed_when: false
-      when: target_stat.stat.exists
-
-    - name: Update all occurrences of trailing numeric tag while preserving the rest of the line
+    - name: Update all QUAY_INDEX_IMAGE_BUILD tags (preserve rest of line)
       ansible.builtin.replace:
         path: "{{ target_file }}"
-        # Match up to the LAST colon before trailing digits; keep quotes/comments
         regexp: "(?m)^(\\s*QUAY_INDEX_IMAGE_BUILD\\s*:\\s*[\"']?.*):([0-9]+)([\"']?\\s*(?:#.*)?\\s*)$"
-        replace: "\\1:{{ new_tag_number | string }}\\3"
+        replace: "\\1:{{ new_tag_number }}\\3"
         backup: true
       register: replace_result
       when: target_stat.stat.exists
 
-    - name: Show QUAY_INDEX_IMAGE_BUILD line(s) after change
-      ansible.builtin.command: awk '/^[[:space:]]*QUAY_INDEX_IMAGE_BUILD[[:space:]]*:/ {print NR":"$0}' {{ target_file }}
-      register: after_lines
-      changed_when: false
-      failed_when: false
-      when: target_stat.stat.exists
-
-    - name: Optionally fail if key not found or pattern did not match
+    - name: Fail if no changes were made
       ansible.builtin.fail:
-        msg: |
-          Could not find a line matching 'QUAY_INDEX_IMAGE_BUILD: <image>:<digits>' in {{ target_file }} on host {{ inventory_hostname }}; no changes made.
-          Before lines: {{ before_lines.stdout_lines | default([]) }}
-          After lines: {{ after_lines.stdout_lines | default([]) }}
+        msg: "No matching QUAY_INDEX_IMAGE_BUILD entries found in {{ target_file }}"
       when:
         - target_stat.stat.exists
         - (replace_result is not defined) or (not replace_result.changed)
