@@ -37,7 +37,7 @@
       ansible.builtin.replace:
         path: "{{ target_file }}"
         # Matches: QUAY_INDEX_IMAGE_BUILD: [optional quote]<anything>:<digits>[optional same/any quote]
-        regexp: '^(\s*QUAY_INDEX_IMAGE_BUILD\s*:\s*["\']?.*?:)(\d+)(["\']?\s*)$'
+        regexp: "^(\\s*QUAY_INDEX_IMAGE_BUILD\\s*:\\s*[\"']?.*?:)(\\d+)([\"']?\\s*)$"
         replace: '\\1{{ new_tag_number | string }}\\3'
         backup: true
       register: replace_result
