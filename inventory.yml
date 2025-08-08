@@ -1,5 +1,5 @@
 # See https://docs.ansible.com/ansible/latest/reference_appendices/YAMLSyntax.html
 all:
-  hosts: localhost
+  hosts: all
   vars: {}
   children: {}
