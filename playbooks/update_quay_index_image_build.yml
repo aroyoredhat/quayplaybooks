@@ -32,10 +32,10 @@
         - not target_stat.stat.exists
         - not ignore_if_missing
 
-    # Case 1: Replace when present as an env array item:
+    # Case 1: Replace when present as an env array item (block style):
     # - name: QUAY_INDEX_IMAGE_BUILD
     #   value: "123"
-    - name: Update env list entry value
+    - name: Update env list entry value (block style)
       ansible.builtin.replace:
         path: "{{ target_file }}"
         # Multiline regex: match '- name: QUAY_INDEX_IMAGE_BUILD' followed by the 'value:' line
@@ -45,9 +45,9 @@
       register: replace_env
       when: target_stat.stat.exists
 
-    # Case 2: Replace when present as a single YAML key:
+    # Case 2: Replace when present as a single YAML key (unquoted):
     # QUAY_INDEX_IMAGE_BUILD: 123  or  QUAY_INDEX_IMAGE_BUILD: "123"
-    - name: Update top-level key value
+    - name: Update top-level key value (unquoted)
       ansible.builtin.replace:
         path: "{{ target_file }}"
         regexp: '^(?m)([[:space:]]*QUAY_INDEX_IMAGE_BUILD[[:space:]]*:[[:space:]]*).*$'
@@ -57,6 +57,50 @@
       when:
         - target_stat.stat.exists
         - not replace_env.changed
+
+    # Case 3: Replace when present as a single YAML key (quoted key):
+    # "QUAY_INDEX_IMAGE_BUILD": 123 or 'QUAY_INDEX_IMAGE_BUILD': "123"
+    - name: Update top-level key value (quoted key)
+      ansible.builtin.replace:
+        path: "{{ target_file }}"
+        regexp: '^(?m)([[:space:]]*["\']?QUAY_INDEX_IMAGE_BUILD["\']?[[:space:]]*:[[:space:]]*).*$'
+        replace: '\\1{{ quay_index_image_build | to_json }}'
+        backup: true
+      register: replace_key_quoted
+      when:
+        - target_stat.stat.exists
+        - not replace_env.changed
+        - (replace_key is not defined) or (not replace_key.changed)
+
+    # Case 4: Replace when env uses flow-style objects inside a list:
+    # env: [{ name: QUAY_INDEX_IMAGE_BUILD, value: "123" }, ...]
+    - name: Update env list entry value (flow style objects)
+      ansible.builtin.replace:
+        path: "{{ target_file }}"
+        regexp: '(?m)(name:\s*QUAY_INDEX_IMAGE_BUILD\s*,\s*value:\s*).+?(?=[,}])'
+        replace: '\\1{{ quay_index_image_build | to_json }}'
+        backup: true
+      register: replace_env_flow
+      when:
+        - target_stat.stat.exists
+        - not replace_env.changed
+        - (replace_key is not defined or not replace_key.changed)
+        - (replace_key_quoted is not defined or not replace_key_quoted.changed)
+
+    # Case 5: Replace when env list uses string entries like "QUAY_INDEX_IMAGE_BUILD=123"
+    - name: Update env string entry lines
+      ansible.builtin.replace:
+        path: "{{ target_file }}"
+        regexp: '^(?m)(\s*-\s*["\']?QUAY_INDEX_IMAGE_BUILD=).*$'
+        replace: '\\1{{ quay_index_image_build | to_json | regex_replace("^\"|\"$", "") }}'
+        backup: true
+      register: replace_env_string
+      when:
+        - target_stat.stat.exists
+        - not replace_env.changed
+        - (replace_key is not defined or not replace_key.changed)
+        - (replace_key_quoted is not defined or not replace_key_quoted.changed)
+        - (replace_env_flow is not defined or not replace_env_flow.changed)
 
     - name: Collect nearby YAML files for troubleshooting
       ansible.builtin.find:
@@ -71,6 +115,9 @@
         - target_stat.stat.exists
         - not replace_env.changed
         - (replace_key is not defined) or (not replace_key.changed)
+        - (replace_key_quoted is not defined) or (not replace_key_quoted.changed)
+        - (replace_env_flow is not defined) or (not replace_env_flow.changed)
+        - (replace_env_string is not defined) or (not replace_env_string.changed)
         - not ignore_if_missing
 
     - name: Optionally fail if key not found
@@ -83,4 +130,7 @@
         - target_stat.stat.exists
         - not replace_env.changed
         - (replace_key is not defined) or (not replace_key.changed)
+        - (replace_key_quoted is not defined) or (not replace_key_quoted.changed)
+        - (replace_env_flow is not defined) or (not replace_env_flow.changed)
+        - (replace_env_string is not defined) or (not replace_env_string.changed)
         - not ignore_if_missing
